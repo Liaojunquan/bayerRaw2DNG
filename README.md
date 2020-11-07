@@ -1,0 +1,2 @@
+# bayerRaw2DNG
+将传感器的原始数据bayerRaw文件转换为DNG文件，方便后期处理

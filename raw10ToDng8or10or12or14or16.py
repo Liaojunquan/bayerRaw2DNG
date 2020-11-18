@@ -7,24 +7,52 @@ import struct, collections
 #相机元数据信息获取使用Android的camera2类库进行相机测试
 width = 1920
 height = 1080
-bpp= 16
+bpp = 10   #输出位深只有8、10、12、14和16这5种数值可选  Only 8, 10, 12, 14 and 16 are available
+
+#低位深转高位深仅仅填充0在高位，无实际意义! 高位深转低位深，可以减少文件大小。
+#Low depth to high depth only fill 0 in the high, no practical significance! High depth to low depth, can reduce the file size.
 
 # load raw data into 16-bit numpy array.
 numPixels = width*height
-rawFile = r'C:\Users\Administrator\Desktop\bayerRaw2DNG\extras\RAW_00242.raw'          #16位拜尔图像文件路径
+buffSize = int(1.25*numPixels)
+rawFile = r'..\extras\RAW_00016.raw10'          #10位拜尔图像文件路径
 rf = open(rawFile, mode='rb')
-rawData = struct.unpack("H"*numPixels,rf.read(2*numPixels))
-rawFlatImage = np.zeros(numPixels, dtype=np.uint16)
-rawFlatImage[:] = rawData[:]
+rawData = struct.unpack("B"*buffSize,rf.read(buffSize))    #struct.unpack("H"*numPixels,rf.read(2*numPixels))
+rawFlatImage = np.zeros(numPixels, dtype=np.uint16)     #像素数组  16位无符号整型
+denominator = 1
+if bpp == 8:
+    denominator = 4
+cycle = 0
+j = 0
+i = 0
+#获取像素数据整数值
+while i < len(rawFlatImage):
+    if cycle == 0:
+        rawFlatImage[i] = (rawData[j] | (rawData[j+1] & 0b11000000) << 2) // denominator
+    elif cycle == 1:
+        rawFlatImage[i] = ((rawData[j] & 0b00111111) | (rawData[j+1] & 0b11110000) << 2) // denominator
+    elif cycle == 2:
+        rawFlatImage[i] = ((rawData[j] & 0b00001111) | (rawData[j+1] & 0b11111100) << 2) // denominator
+    elif cycle == 3:
+        rawFlatImage[i] = ((rawData[j] & 0b00000011) | rawData[j+1] << 2) // denominator
 
+    cycle = cycle + 1
+    j = j + 1
+    i = i + 1
+    if cycle == 4:
+        j = j + 1
+        cycle = 0
+    
+#用于测试像素最大最小亮度值
 minNum = 1000000
 maxNum = 0
-for i in rawData:
+for i in rawFlatImage:
     if i < minNum:
         minNum = i
     if i > maxNum:
         maxNum = i
 print("min="+str(minNum)+"  max="+str(maxNum))
+
 rawImage = np.reshape(rawFlatImage,(height,width))
 #rawImage = rawImage >> (16 - bpp)
 
@@ -77,13 +105,13 @@ t.set(Tag.BitsPerSample, bpp)                #每像素位深  Need to be modifi
 t.set(Tag.CFARepeatPatternDim, [2,2])
 t.set(Tag.CFAPattern, [0, 1, 1, 2])          #0=红色 1=绿色 2=蓝色 拜尔矩阵RGGB排列  Need to be modified depending on the picture 视图片情况需要修改
 t.set(Tag.BlackLevel, 0)               #(1984 >> (16 - bpp))黑场
-t.set(Tag.WhiteLevel, 65535)           #((1 << bpp) -1) 16bit 白场
-t.set(Tag.ColorMatrix1, nccm1)          #颜色矩阵1
-t.set(Tag.ColorMatrix2, nccm2)          #颜色矩阵2
+t.set(Tag.WhiteLevel, (1 << bpp)-1)           #((1 << bpp) -1) 16bit 白场
+t.set(Tag.ColorMatrix1, ccm1)          #颜色矩阵1
+t.set(Tag.ColorMatrix2, ccm2)          #颜色矩阵2
 t.set(Tag.CalibrationIlluminant1, 21)           #校准光源 21
 t.set(Tag.CalibrationIlluminant2, 21)           #校准光源                               Need to be modified depending on the picture 视图片情况需要修改
-t.set(Tag.AsShotNeutral, [[1000,1567],[1000,1000],[1000,2250]])   #白平衡白点R,G,B矩阵  Need to be modified depending on the picture 视图片情况需要修改  [[1000,1567],[1000,1000],[1000,2250]]
-t.set(Tag.BaselineExposure, [[5,1],[1,1]])      #曝光补偿+5                             Need to be modified depending on the picture 视图片情况需要修改
+t.set(Tag.AsShotNeutral, [[1092, 1951], [1, 1], [1092, 2129]])   #白平衡白点R,G,B矩阵  Need to be modified depending on the picture 视图片情况需要修改  [[1000,1567],[1000,1000],[1000,2250]]
+t.set(Tag.BaselineExposure, [[1,1],[1,1]])      #曝光补偿                             Need to be modified depending on the picture 视图片情况需要修改
 t.set(Tag.DNGVersion, [1, 4, 0, 0])
 t.set(Tag.DNGBackwardVersion, [1, 2, 0, 0])
 t.set(Tag.Make, "Camera Brand")
@@ -94,7 +122,7 @@ t.set(Tag.ForwardMatrix1,fm1)
 t.set(Tag.ForwardMatrix1,fm2)
 
 # save to dng file.
-RAW2DNG().convert(rawImage, tags=t, filename="RAW_00242", path="")
+RAW2DNG().convert(rawImage, tags=t, filename="RAW_00016", path="")
 
 #·  BaselineExposureOffset（基本曝光补偿）
 #·  CalibrationIlluminant1（校正光源1）
